@@ -1,0 +1,110 @@
+set.seed(1)
+library(ggplot2)
+library(boot)
+library(ggplot2)
+
+
+# Parameters
+simulate_portfolios_num <- 100  
+block_size <- sqrt(nrow(fin_data_set))
+n_bootstrap <- 100
+data_set <- fin_data_set
+#View(fin_data_set)
+
+
+ ## Generate Random Portfolio Weights ##
+generate_random_weights <- function() {
+  repeat {
+    # Generate random weights between 0.1 and 1 
+    w <- runif(ncol(data_set), min = 0.1, max = 1)
+    w <- w / sum(w)  # Normalize to sum to 1
+    
+    if (all(w > 0.1)) {  # Ensure all weights > 0.1
+      return(w)
+    }
+  }
+}
+
+simulate_portfolios <- function(n) {
+  portfolio_weights <- matrix(0, nrow = n, ncol = ncol(data_set))
+  for (i in 1:n) {
+    portfolio_weights[i, ] <- generate_random_weights()
+  }
+  return(portfolio_weights)
+}
+
+simulated_weights <- simulate_portfolios(simulate_portfolios_num)
+print(head(simulated_weights))  # Display a few sets of weights
+
+## Stationary Block Bootstrap ##
+stationary_block_bootstrap <- function(data, block_size, n_bootstrap) {
+  n <- length(data)
+  simulated_returns <- matrix(NA, nrow = n, ncol = n_bootstrap)
+  
+  for (b in 1:n_bootstrap) {
+    indices <- integer(0)
+    while (length(indices) < n) {
+      block_start <- sample(1:n, 1)
+      block <- seq(block_start, block_start + block_size - 1) %% n
+      block[block == 0] <- n
+      indices <- c(indices, block)
+    }
+    indices <- indices[1:n]  # Trim indices to match data length
+    simulated_returns[, b] <- data[indices]
+  }
+  
+  return(simulated_returns)
+}
+
+## Calculate Portfolio Returns ##
+simulate_return_mat <- function(simulate_portfolios_num) {
+  portfolio_return_matrix <- matrix(0, nrow = simulate_portfolios_num, ncol = ncol(data_set) +4 )
+  
+  for (i in 1:simulate_portfolios_num) {
+    portfolio_stock_return <- numeric(nrow(data_set))
+    
+    # Calculate portfolio returns for the given weights
+    for (j in 1:nrow(data_set)) {
+      portfolio_stock_return[j] <- sum(simulated_weights[i, ] * data_set[j, ])
+    }
+    
+    portfolio_return_historical <- portfolio_stock_return
+    
+    # Calculate historical mean and standard deviation
+    historical_return_mean <- mean(portfolio_return_historical)
+    historical_return_sd <- sd(portfolio_return_historical)
+    
+    # Use block bootstrap to simulate future returns
+    simulated_returns <- stationary_block_bootstrap(portfolio_return_historical, block_size, n_bootstrap)
+    
+    # Calculate Value-at-Risk (VaR) for each bootstrap sample
+    calculate_var <- apply(simulated_returns, 2, quantile, probs = 0.01)
+    calculate_var_mean <- mean(calculate_var)
+    
+    mean <- mean(apply(simulated_returns,2,mean))
+    sd <- mean(apply(simulated_returns,2,sd))
+    mean_sd <- mean/sd
+    
+    # Store results
+    portfolio_return_matrix[i, ] <- c(simulated_weights[i, ], calculate_var_mean, mean,sd, mean_sd)
+  }
+  
+  return(portfolio_return_matrix)
+}
+
+# Generate the simulated return matrix
+simulate_return_matrix <- simulate_return_mat(simulate_portfolios_num)
+
+print(head(simulate_return_matrix))
+var <- simulate_return_matrix[,3]
+simulation_return_matrix[,5]
+
+## Find Optimal Portfolio ##
+plot(simulate_return_matrix[,5],simulate_return_matrix[,4], xlab = "Standard Deviation" , ylab = "Return",main = "Portfolio Risk and Return PLot",col=("blue"))
+var <- simulate_return_matrix[,3]
+mean_sd <- simulate_return_matrix[,ncol(fin_data_set)+3]
+index_optimal <- which.max(mean_sd)
+index <- which.max(var)
+max(var)
+optimal_weights <- simulate_return_matrix[index_optimal, ]
+print(optimal_weights)
